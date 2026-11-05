@@ -1,0 +1,16 @@
+# 构建产物
+build/
+app/build/
+.gradle/
+local.properties
+
+# 构建环境（JDK/SDK/Gradle，全部本地）
+.env/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 日志
+*.log

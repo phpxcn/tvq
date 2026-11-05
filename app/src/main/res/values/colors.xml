@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0E1621</color>
+    <color name="bgCard">#16222E</color>
+    <color name="bgDeep">#0A1017</color>
+    <color name="primary">#2D7DD2</color>
+    <color name="accent">#FFC53D</color>
+    <color name="textMain">#FFFFFF</color>
+    <color name="textSub">#9FB3C8</color>
+    <color name="ok">#2ECC71</color>
+    <color name="err">#E5484D</color>
+    <color name="optionBg">#1B2A3A</color>
+    <color name="optionBgFocused">#FFC53D</color>
+    <color name="iconBg">#1E5AA8</color>
+</resources>

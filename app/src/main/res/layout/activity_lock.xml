@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bgDeep">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:padding="48dp">
+
+            <TextView
+                android:id="@+id/tvHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/lock_header"
+                android:textColor="@color/accent"
+                android:textSize="26sp" />
+
+            <TextView
+                android:id="@+id/tvQuestion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:gravity="center"
+                android:textColor="@color/textMain"
+                android:textSize="52sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvAttempts"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="@color/textSub"
+                android:textSize="20sp" />
+
+            <!-- 选择题选项容器（代码动态填充 GridLayout） -->
+            <GridLayout
+                android:id="@+id/containerOptions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="36dp"
+                android:columnCount="2"
+                android:orientation="horizontal"
+                android:useDefaultMargins="true" />
+
+            <!-- 填空题：已输入内容 + 数字键盘 -->
+            <LinearLayout
+                android:id="@+id/containerFill"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="36dp"
+                android:orientation="vertical"
+                android:gravity="center_horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvTyped"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="280dp"
+                    android:gravity="center"
+                    android:background="@drawable/bg_option"
+                    android:padding="18dp"
+                    android:textColor="@color/accent"
+                    android:textSize="48sp"
+                    android:textStyle="bold" />
+
+                <GridLayout
+                    android:id="@+id/gridNumpad"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="28dp"
+                    android:columnCount="3"
+                    android:orientation="horizontal"
+                    android:useDefaultMargins="true" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tvFeedback"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:textColor="@color/err"
+                android:textSize="26sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="30dp"
+                android:text="@string/lock_hint"
+                android:textColor="@color/textSub"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- 答对庆祝浮层 -->
+    <FrameLayout
+        android:id="@+id/overlayCorrect"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#0C3B23"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="@string/lock_correct"
+            android:textColor="@color/ok"
+            android:textSize="64sp"
+            android:textStyle="bold" />
+    </FrameLayout>
+
+    <!-- 电视端管理码浮层（家长兜底） -->
+    <LinearLayout
+        android:id="@+id/overlayPin"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#E60A1017"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/pin_prompt"
+            android:textColor="@color/textMain"
+            android:textSize="28sp" />
+
+        <TextView
+            android:id="@+id/tvPinDots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:letterSpacing="0.3"
+            android:text="____"
+            android:textColor="@color/accent"
+            android:textSize="48sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/pin_hint"
+            android:textColor="@color/textSub"
+            android:textSize="16sp" />
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">电视答题锁</string>
+    <string name="lock_header">休息一下 · 先答对这道题</string>
+    <string name="lock_hint">用遥控器选择答案；填空题直接按数字键输入</string>
+    <string name="lock_correct">答对了！</string>
+    <string name="pin_prompt">请输入管理码</string>
+    <string name="pin_hint">用遥控器数字键输入 4 位管理码，按错可长按返回键重输</string>
+    <string name="setup_title">电视答题锁</string>
+    <string name="setup_phone_label">手机管理地址（同一 WiFi）</string>
+    <string name="setup_tip">手机和电视连接同一个 WiFi，在手机浏览器输入上面的地址，或扫描二维码。也可以直接输入下面的 IP 地址。</string>
+    <string name="setup_start">启动锁机服务</string>
+    <string name="setup_test_lock">测试锁机</string>
+    <string name="setup_unlock">解除锁定</string>
+    <string name="setup_autostart_note">提示：建议在电视「应用管理」中允许本应用开机自启动，断电重启后自动恢复锁定状态。</string>
+</resources>
