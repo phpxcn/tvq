@@ -11,8 +11,9 @@ android {
         applicationId = "com.tvlock.app"
         minSdk = 21          // 覆盖老款国产安卓电视
         targetSdk = 29       // 保留 legacy 外置存储直写能力（/sdcard/TVLock）
-        versionCode = 1
-        versionName = "1.0"
+        // CI 打 tag 时注入版本（-PappVersionName=v1.0.0 -PappVersionCode=10000），本地默认 1.0
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("appVersionName") as String?) ?: "1.0"
     }
 
     buildTypes {

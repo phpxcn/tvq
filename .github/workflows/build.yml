@@ -1,0 +1,86 @@
+name: 发布构建
+
+# 推送版本 tag 时自动构建，如：git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: # 允许在 Actions 页面手动触发（版本号为 dev）
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 创建 Release 所需
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # ubuntu runner 自带 Android SDK 基础环境，补装本项目所需组件
+      - name: 安装 Android SDK 组件
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      # 缓存 Gradle 依赖，加速后续构建
+      - name: Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      # 从 tag 解析版本：v1.2.3 -> versionName=1.2.3, versionCode=10203
+      - name: 解析版本号
+        id: ver
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            NAME="${GITHUB_REF_NAME#v}"
+            CODE=$(echo "$NAME" | awk -F. '{a=($1+0>20000?20000:$1+0);b=($2+0>99?99:$2+0);c=($3+0>99?99:$3+0);print a*10000+b*100+c}')
+          else
+            NAME="dev"; CODE=99999
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$((CODE<1?1:CODE))" >> "$GITHUB_OUTPUT"
+          echo "本次构建版本：$NAME (code $((CODE<1?1:CODE)))"
+
+      - name: 编译 APK + 单元测试
+        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon \
+          -PappVersionName="${{ steps.ver.outputs.name }}" \
+          -PappVersionCode="${{ steps.ver.outputs.code }}"
+
+      - name: 整理产物
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "TVLock-v${{ steps.ver.outputs.name }}.apk"
+          R=app/build/test-results/testDebugUnitTest
+          T=$(grep -ho 'tests="[0-9]*"' $R/*.xml | grep -o '[0-9]*' | awk '{s+=$1}END{print s+0}')
+          F=$(grep -ho 'failures="[0-9]*"' $R/*.xml | grep -o '[0-9]*' | awk '{s+=$1}END{print s+0}')
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUM
+          ## 构建结果
+          - TVLock-v${{ steps.ver.outputs.name }}.apk：$(du -h TVLock-*.apk | cut -f1)，SHA256：$(shasum -a 256 TVLock-*.apk | cut -d' ' -f1)
+          - 单元测试：${T} 个用例，${F} 个失败
+          SUM
+
+      - name: 上传 APK（Actions 页面下载）
+        uses: actions/upload-artifact@v4
+        with:
+          name: TVLock-v${{ steps.ver.outputs.name }}
+          path: TVLock-v${{ steps.ver.outputs.name }}.apk
+          if-no-files-found: error
+
+      - name: 上传测试报告
+        if: always() # 测试失败时也上传，方便排查
+        uses: actions/upload-artifact@v4
+        with:
+          name: 测试报告
+          path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: warn
+
+      # 仅 tag 触发时发布：自动创建 GitHub Release 并附上 APK
+      - name: 发布 GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: TVLock-v*.apk
+          generate_release_notes: true
