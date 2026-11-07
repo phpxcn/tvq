@@ -49,10 +49,13 @@ jobs:
           echo "code=$((CODE<1?1:CODE))" >> "$GITHUB_OUTPUT"
           echo "本次构建版本：$NAME (code $((CODE<1?1:CODE)))"
 
+      # 注意：多行命令必须用块标量（|），否则 YAML 会把换行折叠成空格，
+      # 续行反斜杠变成「转义空格」——-P 参数会被 gradle 当成任务名（实测踩坑）
       - name: 编译 APK + 单元测试
-        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon \
-          -PappVersionName="${{ steps.ver.outputs.name }}" \
-          -PappVersionCode="${{ steps.ver.outputs.code }}"
+        run: |
+          ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon \
+            -PappVersionName="${{ steps.ver.outputs.name }}" \
+            -PappVersionCode="${{ steps.ver.outputs.code }}"
 
       # 交付形态：直达单 APK（主 App）。hippo 伪装包名后主 App 已不被
       # 强杀，看门狗双包仅作为可选增强保留在仓库（watchdog module）。
