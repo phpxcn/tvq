@@ -36,8 +36,6 @@ class BankManager(private val context: Context) {
 
     fun total(): Int = bank?.total() ?: 0
 
-    fun perCat(): List<Pair<String, Int>> = bank?.perCat() ?: emptyList()
-
     fun currentBankJson(): String = bank?.toBankJson() ?: "{}"
 
     /** 首次运行：从 assets 引导初始题库，然后加载主库 */
@@ -85,7 +83,6 @@ class BankManager(private val context: Context) {
         bank = newBank
         return ImportResult(
             ok = true,
-            perCat = newBank.perCat(),
             total = newBank.total(),
             note = r.error
         )
@@ -120,15 +117,25 @@ class BankManager(private val context: Context) {
     }
 
     /**
-     * 随机抽题，尽量避开最近做过的题。
+     * 随机抽题，避开已答对过的题（answeredIds）和最近做过的题（recentIds）。
+     * 排除后为空（全部题都答对过）时从头轮回——学完一轮重新开始。
      */
-    fun pickQuestion(recentIds: List<String>): com.tvlock.app.data.Question {
+    fun pickQuestion(excludeIds: Collection<String>): com.tvlock.app.data.Question {
         val b = bank ?: return Question.FALLBACK
         val all = b.all()
         if (all.isEmpty()) return Question.FALLBACK
-        val fresh = all.filter { it.id !in recentIds }
+        val exclude = excludeIds.toHashSet()
+        val fresh = all.filter { it.id !in exclude }
         val pool = if (fresh.isNotEmpty()) fresh else all
         return pool[AppCore.random.nextInt(pool.size)]
+    }
+
+    /** 题库中尚未答对过的题数（换库后旧 id 自然失效，剩余即新库总量） */
+    fun remainingCount(answeredIds: Collection<String>): Int {
+        val b = bank ?: return 0
+        if (answeredIds.isEmpty()) return b.all().size
+        val exclude = answeredIds.toHashSet()
+        return b.all().count { it.id !in exclude }
     }
 
     // ---------- 内部 ----------
@@ -209,7 +216,6 @@ class BankManager(private val context: Context) {
 
     data class ImportResult(
         val ok: Boolean,
-        val perCat: List<Pair<String, Int>> = emptyList(),
         val total: Int = 0,
         val note: String? = null,
         val error: String? = null

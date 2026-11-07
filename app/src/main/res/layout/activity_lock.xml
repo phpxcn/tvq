@@ -54,16 +54,17 @@
                 android:orientation="horizontal"
                 android:useDefaultMargins="true" />
 
-            <!-- 填空题：已输入内容 + 数字键盘 -->
+            <!-- 填空题：已输入内容 + 两行六列紧凑键盘（数字顺排，右侧删除/确定，
+                 整页一屏内完成，无需滚动到页底找确定键） -->
             <LinearLayout
                 android:id="@+id/containerFill"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="36dp"
+                android:layout_marginTop="24dp"
                 android:orientation="vertical"
                 android:gravity="center_horizontal"
                 android:visibility="gone">
-
+            
                 <TextView
                     android:id="@+id/tvTyped"
                     android:layout_width="wrap_content"
@@ -71,17 +72,17 @@
                     android:minWidth="280dp"
                     android:gravity="center"
                     android:background="@drawable/bg_option"
-                    android:padding="18dp"
+                    android:padding="12dp"
                     android:textColor="@color/accent"
                     android:textSize="48sp"
                     android:textStyle="bold" />
-
+            
                 <GridLayout
                     android:id="@+id/gridNumpad"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="28dp"
-                    android:columnCount="3"
+                    android:layout_marginTop="20dp"
+                    android:columnCount="6"
                     android:orientation="horizontal"
                     android:useDefaultMargins="true" />
             </LinearLayout>
@@ -106,24 +107,8 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- 答对庆祝浮层 -->
-    <FrameLayout
-        android:id="@+id/overlayCorrect"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#0C3B23"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="@string/lock_correct"
-            android:textColor="@color/ok"
-            android:textSize="64sp"
-            android:textStyle="bold" />
-    </FrameLayout>
-
+    <!-- 答对时礼花直接叠加在页面上（Confetti.kt 动态 View，无布局） -->
+    
     <!-- 电视端管理码浮层（家长兜底） -->
     <LinearLayout
         android:id="@+id/overlayPin"

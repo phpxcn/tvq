@@ -46,10 +46,12 @@ jobs:
           echo "本次构建版本：$NAME (code $((CODE<1?1:CODE)))"
 
       - name: 编译 APK + 单元测试
-        run: ./gradlew assembleDebug testDebugUnitTest --no-daemon \
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon \
           -PappVersionName="${{ steps.ver.outputs.name }}" \
           -PappVersionCode="${{ steps.ver.outputs.code }}"
 
+      # 交付形态：直达单 APK（主 App）。hippo 伪装包名后主 App 已不被
+      # 强杀，看门狗双包仅作为可选增强保留在仓库（watchdog module）。
       - name: 整理产物
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk "TVLock-v${{ steps.ver.outputs.name }}.apk"
@@ -58,7 +60,7 @@ jobs:
           F=$(grep -ho 'failures="[0-9]*"' $R/*.xml | grep -o '[0-9]*' | awk '{s+=$1}END{print s+0}')
           cat >> "$GITHUB_STEP_SUMMARY" <<SUM
           ## 构建结果
-          - TVLock-v${{ steps.ver.outputs.name }}.apk：$(du -h TVLock-*.apk | cut -f1)，SHA256：$(shasum -a 256 TVLock-*.apk | cut -d' ' -f1)
+          - TVLock-v${{ steps.ver.outputs.name }}.apk：$(du -h TVLock-v*.apk | head -1 | cut -f1)，SHA256：$(shasum -a 256 TVLock-v*.apk | head -1 | cut -d' ' -f1)
           - 单元测试：${T} 个用例，${F} 个失败
           SUM
 
@@ -66,7 +68,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TVLock-v${{ steps.ver.outputs.name }}
-          path: TVLock-v${{ steps.ver.outputs.name }}.apk
+          path: |
+            TVLock-v${{ steps.ver.outputs.name }}.apk
           if-no-files-found: error
 
       - name: 上传测试报告
@@ -82,5 +85,6 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: TVLock-v*.apk
+          files: |
+            TVLock-v*.apk
           generate_release_notes: true

@@ -100,7 +100,13 @@ class MdnsResponder(private val context: Context) {
                 val ips = Net.localIpv4s()
                 if (ips.isEmpty()) continue
                 val resp = DnsCodec.buildAResponse(msg.id, hit, ips)
-                sock.send(DatagramPacket(resp, resp.size, groupAddr, DnsCodec.MDNS_PORT))
+                // RFC 6762：源端口非 5353 的 legacy 查询必须单播回源（部分安卓 App/Windows 走这条路）；
+                // 标准查询（源端口 5353）组播应答，局域网内所有设备都能收到
+                if (pkt.port != DnsCodec.MDNS_PORT) {
+                    sock.send(DatagramPacket(resp, resp.size, pkt.address, pkt.port))
+                } else {
+                    sock.send(DatagramPacket(resp, resp.size, groupAddr, DnsCodec.MDNS_PORT))
+                }
             } catch (_: Exception) {
                 // 单包错误不影响循环
             }
@@ -139,15 +145,25 @@ class MdnsResponder(private val context: Context) {
         }
     }
 
-    /** 主动广播（无需绑定 5353 也能发出） */
+    /**
+     * 主动广播（无需绑定 5353 也能发出）。
+     * 优先用已绑定 5353 的 socket 发送：Mac/iOS 的 mDNS 守护进程会丢弃
+     * 源端口非 5353 的 unsolicited 响应，合规源端口才能让它们提前缓存记录。
+     */
     private fun announce() {
         try {
             val ips = Net.localIpv4s()
             if (ips.isEmpty()) return
             val resp = DnsCodec.buildAResponse(0, null, ips)
+            val group = InetAddress.getByName(GROUP)
+            val sock5353 = socket
+            if (sock5353 != null) {
+                sock5353.send(DatagramPacket(resp, resp.size, group, DnsCodec.MDNS_PORT))
+                return
+            }
+            // 端口被占（announce-only 模式）：退化为临时 socket，尽力而为
             MulticastSocket().use { s ->
-                s.reuseAddress = true
-                s.send(DatagramPacket(resp, resp.size, InetAddress.getByName(GROUP), DnsCodec.MDNS_PORT))
+                s.send(DatagramPacket(resp, resp.size, group, DnsCodec.MDNS_PORT))
             }
         } catch (_: Exception) {
         }

@@ -13,6 +13,8 @@
     <!-- /sdcard/TVLock 题库目录（targetSdk 29 + legacy storage） -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- 锁定防逃遮罩（需 appops 授予「在其他应用上层显示」，install.sh 自动处理） -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -25,10 +27,11 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true">
 
-        <!-- 电视端设置/状态页（桌面入口） -->
+        <!-- 电视端设置/状态页（桌面入口）；不出现在最近任务，避免一键清理误杀 -->
         <activity
             android:name=".SetupActivity"
             android:exported="true"
+            android:excludeFromRecents="true"
             android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -48,10 +51,12 @@
             android:launchMode="singleTask"
             android:theme="@style/LockTheme" />
 
-        <!-- 常驻前台服务：倒计时调度 + 看门狗 + 断电恢复 -->
+        <!-- 常驻前台服务：倒计时调度 + 看门狗 + 断电恢复。
+             exported=true：供独立看门狗 App（com.android.tvlockwd）跨 App 拉起互保。
+             安全性：仅能触发幂等的启动（无数据交互），恶意拉起无增益 -->
         <service
             android:name=".service.LockCoreService"
-            android:exported="false" />
+            android:exported="true" />
 
         <!-- 开机自启 -->
         <receiver
@@ -63,5 +68,39 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- 自愈心跳：AlarmManager 周期唤醒，进程被杀后拉回服务 -->
+        <receiver
+            android:name=".GuardianReceiver"
+            android:exported="false" />
+
+        <!-- 设备管理器：激活后「强行停止」对本应用失效，对抗 ROM 后台清理 -->
+        <receiver
+            android:name=".GuardAdminReceiver"
+            android:label="防强杀保护"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.admin.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 无障碍守卫：启用后系统层强杀对应用失效（对抗清理守护的最后防线），
+             锁屏期间附带拦截 HOME 键（0ms 防逃） -->
+        <service
+            android:name=".GuardAccessibilityService"
+            android:label="@string/guard_accessibility_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/guard_accessibility" />
+        </service>
     </application>
 </manifest>

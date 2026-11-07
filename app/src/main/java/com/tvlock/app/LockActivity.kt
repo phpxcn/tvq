@@ -51,7 +51,8 @@ class LockActivity : Activity() {
     private lateinit var containerFill: android.widget.LinearLayout
     private lateinit var tvTyped: TextView
     private lateinit var gridNumpad: GridLayout
-    private lateinit var overlayCorrect: View
+    private lateinit var tvHint: TextView
+    private lateinit var rootLayout: android.widget.FrameLayout
     private lateinit var overlayPin: View
     private lateinit var tvPinDots: TextView
 
@@ -85,7 +86,8 @@ class LockActivity : Activity() {
         containerFill = findViewById(R.id.containerFill)
         tvTyped = findViewById(R.id.tvTyped)
         gridNumpad = findViewById(R.id.gridNumpad)
-        overlayCorrect = findViewById(R.id.overlayCorrect)
+        tvHint = findViewById(R.id.tvHint)
+        rootLayout = findViewById(R.id.root)
         overlayPin = findViewById(R.id.overlayPin)
         tvPinDots = findViewById(R.id.tvPinDots)
     }
@@ -93,6 +95,7 @@ class LockActivity : Activity() {
     override fun onResume() {
         super.onResume()
         isFront = true
+        GuardOverlay.hide() // 锁屏回前台，收起防逃遮罩
         hideSystemUi()
         // 屏幕固定：非设备所有者会弹一次系统确认框（家长按一次 OK 即固定）
         if (AppCore.state.locked) {
@@ -107,6 +110,11 @@ class LockActivity : Activity() {
     override fun onPause() {
         super.onPause()
         isFront = false
+        // 锁定中被切走（HOME/其他应用置顶）：零空窗盖住屏幕，
+        // 不给孩子看到桌面内容的机会，看门狗拉回后自动收起
+        if (AppCore.state.locked && !finished) {
+            GuardOverlay.show(applicationContext)
+        }
     }
 
     override fun onDestroy() {
@@ -140,8 +148,9 @@ class LockActivity : Activity() {
         if (pinMode) return handlePinKey(keyCode)
 
         when (keyCode) {
-            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU,
-            KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_APP_SWITCH -> return true
+            // HOME/APP_SWITCH 是系统键，Activity 收不到（拦截在 GuardOverlay
+            // 遮罩 + 屏幕固定 + 看门狗拉回三防线）；这里拦 BACK/MENU
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_MENU -> return true
 
             KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
@@ -262,11 +271,17 @@ class LockActivity : Activity() {
         if (!st.locked) return
         val q = st.current ?: return
         tvQuestion.text = q.q
-        tvAttempts.text = if (st.wrongAttempts > 0) "已答错 ${st.wrongAttempts} 次，再想一想" else "答对就能继续看电视"
-        tvFeedback.visibility = View.GONE
+        val remaining = AppCore.bankRemaining()
+        tvAttempts.text = when {
+            st.wrongAttempts > 0 -> "已答错 ${st.wrongAttempts} 次，再想一想（剩余 $remaining 题）"
+            st.pendingExtra > 0 -> "答对了！还要再答 ${st.pendingExtra} 题（剩余 $remaining 题）"
+            else -> "答对就能继续看电视（剩余 $remaining 题）"
+        }
 
         val qid = q.id
         if (qid != lastQuestionId) {
+            // 仅换题时清反馈行：答对连答的「继续下一题」提示不被异步刷新抹掉
+            tvFeedback.visibility = View.GONE
             lastQuestionId = qid
             buildForQuestion(q)
         }
@@ -282,6 +297,7 @@ class LockActivity : Activity() {
         if (q.isChoice) {
             containerOptions.visibility = View.VISIBLE
             containerFill.visibility = View.GONE
+            tvHint.visibility = View.VISIBLE
             val opts = q.opts!!
             containerOptions.columnCount = if (opts.size <= 4) 2 else 1
             val buttons = ArrayList<Button>()
@@ -303,6 +319,8 @@ class LockActivity : Activity() {
         } else {
             containerOptions.visibility = View.GONE
             containerFill.visibility = View.VISIBLE
+            // 填空题收起底部提示行：键盘一屏放下的关键（选择题无键盘不缺空间）
+            tvHint.visibility = View.GONE
             buildNumpad()
         }
     }
@@ -320,17 +338,19 @@ class LockActivity : Activity() {
     }
 
     private fun buildNumpad() {
-        val labels = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "删除", "0", "确定")
-        gridNumpad.columnCount = 3
+        // 两行六列紧凑键盘：数字 1~9、0 顺排，最右一列「删除 / 确定」。
+        // 旧九宫格 4 行在大屏下「确定」被挤出屏幕（需滚到页底才能按），
+        // 此布局连同题目一屏放下；D-pad 两行导航，遥控数字键仍可直接输入
+        val labels = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "删除", "确定")
+        gridNumpad.columnCount = 6
         labels.forEach { label ->
             val btn = Button(this)
             btn.text = label
-            btn.textSize = 28f
+            btn.textSize = 24f
             btn.setTextColor(resources.getColorStateList(R.color.option_text))
             btn.background = resolveDrawable(R.drawable.bg_option)
-            btn.setPadding(24, 24, 24, 24)
+            btn.setPadding(16, 16, 16, 16)
             btn.isAllCaps = false
-            btn.minWidth = 200
             btn.setOnClickListener {
                 when (label) {
                     "删除" -> AppCore.setTyped(AppCore.state.typed.dropLast(1))
@@ -344,8 +364,9 @@ class LockActivity : Activity() {
             gridNumpad.addView(
                 btn,
                 GridLayout.LayoutParams().apply {
-                    width = ViewGroup.LayoutParams.WRAP_CONTENT
+                    width = 0
                     height = ViewGroup.LayoutParams.WRAP_CONTENT
+                    columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
                 }
             )
         }
@@ -354,29 +375,44 @@ class LockActivity : Activity() {
     // ---------- 答题 ----------
 
     private fun submit(input: String) {
-        val correct = AppCore.submitAnswer(input)
-        if (correct) {
-            showCorrect()
-        } else {
-            showWrong()
+        when (AppCore.submitAnswer(input)) {
+            AppCore.SubmitResult.WRONG -> showWrong()
+            AppCore.SubmitResult.NEXT -> showCorrect(next = true)
+            AppCore.SubmitResult.DONE -> showCorrect(next = false)
         }
     }
 
-    private fun showCorrect() {
-        overlayCorrect.visibility = View.VISIBLE
-        try {
-            stopLockTask()
-        } catch (_: Throwable) {
+    /**
+     * 答对：礼花迸发 + 页内轻提示，不再弹全屏庆祝页。
+     *  - next=true：还有答错遗留的附加题，立即刷出新题继续（不离开锁屏）
+     *  - next=false：解锁，900ms 后返回播放页
+     */
+    private fun showCorrect(next: Boolean) {
+        if (next) {
+            // 新题已入 state（submitAnswer 内完成）；置空缓存强制按新题重建界面
+            lastQuestionId = null
+            render(AppCore.state)
+        } else {
+            try {
+                stopLockTask()
+            } catch (_: Throwable) {
+            }
+            finished = true
         }
-        finished = true
-        ui.postDelayed({ finish() }, 1600)
+        Confetti.burst(rootLayout)
+        tvFeedback.text = if (next) "答对了！继续下一题" else "答对了！"
+        tvFeedback.setTextColor(resolveColor(R.color.ok))
+        tvFeedback.visibility = View.VISIBLE
+        if (!next) {
+            ui.postDelayed({ finish() }, 900)
+        }
     }
 
     private fun showWrong() {
         tvFeedback.text = "再想一想，你可以的！"
         tvFeedback.setTextColor(resolveColor(R.color.err))
         tvFeedback.visibility = View.VISIBLE
-        tvAttempts.text = "已答错 ${AppCore.state.wrongAttempts} 次，继续加油"
+        tvAttempts.text = "已答错 ${AppCore.state.wrongAttempts} 次，继续加油（剩余 ${AppCore.bankRemaining()} 题）"
         // 题目抖动提示
         val shake = ObjectAnimator.ofFloat(tvQuestion, "translationX", 0f, -24f, 24f, -16f, 16f, 0f)
         shake.duration = 400

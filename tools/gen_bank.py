@@ -4,7 +4,7 @@
 TVLock 初始题库生成器（小学一年级：口算 + 拼音，约 1800 题）
 输出：app/src/main/assets/questions.json
 
-格式与需求完全一致：
+格式：纯题目数组（不分学科）；
   带 opts  = 选择题（ans 为 1 起始序号）
   不带 opts = 填空题（ans 为文本）
 """
@@ -472,17 +472,15 @@ for ch, py, tone, sm, ym, zt in nose_chars[:60]:
                 ["后鼻韵母"] if is_front else ["前鼻韵母"])
 
 # ============================================================
-# 输出
+# 输出（纯题目数组，不分学科）
 # ============================================================
-bank = {"math": math_qs, "pinyin": pinyin_qs}
+bank = math_qs + pinyin_qs
 os.makedirs(os.path.dirname(OUT), exist_ok=True)
 with open(OUT, "w", encoding="utf-8") as f:
     json.dump(bank, f, ensure_ascii=False, separators=(",", ":"))
 
-total = len(math_qs) + len(pinyin_qs)
+total = len(bank)
 print(f"题库生成完成 -> {os.path.normpath(OUT)}")
-print(f"  math   : {len(math_qs)} 题")
-print(f"  pinyin : {len(pinyin_qs)} 题")
 print(f"  合计   : {total} 题")
 if total < 1500:
     print("警告：题量偏少，请检查生成参数", file=sys.stderr)

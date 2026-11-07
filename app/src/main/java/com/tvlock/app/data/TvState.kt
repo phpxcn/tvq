@@ -20,8 +20,11 @@ data class TvState(
     val typed: String = "",               // 填空题已输入内容（断电保留）
     val current: Question? = null,        // 当前题目（完整冗余存储）
     val recentIds: List<String> = emptyList(), // 最近做过的题（去重，最多50）
-    val adminPin: String = "1234",        // 电视端管理码（家长兜底）
-    val panelPin: String = ""             // 手机面板管理码（空 = 关闭）
+    val pendingExtra: Int = 0,            // 答错遗留的附加题数（答对当前题后需连答）
+    val answeredIds: List<String> = emptyList(), // 已答对过的题（永不再出，答完全部后轮回）
+    val adminPin: String = "1234",        // 电视端管理码（家长兜底：锁屏↑↑↓↓←→←→后输入）
+    val panelPin: String = "",            // 手机面板管理码（空 = 关闭）
+    val firstRunDone: Boolean = false     // 首次启动引导（开机自启指引+管理码设置）是否完成
 ) {
     fun toMap(): LinkedHashMap<String, Any?> {
         val m = LinkedHashMap<String, Any?>()
@@ -40,8 +43,11 @@ data class TvState(
             cm
         }
         m["recentIds"] = recentIds
+        m["pendingExtra"] = pendingExtra
+        m["answeredIds"] = answeredIds
         m["adminPin"] = adminPin
         m["panelPin"] = panelPin
+        m["firstRunDone"] = firstRunDone
         return m
     }
 
@@ -50,7 +56,7 @@ data class TvState(
             val cur = (m["current"] as? Map<*, *>)?.let {
                 val cm = linkedMapOf<String, Any?>()
                 for ((k, v) in it) cm[k.toString()] = v
-                Question.fromMap(cm, (it["cat"] as? String) ?: "math")
+                Question.fromMap(cm, (it["cat"] as? String) ?: "")
             }
             return TvState(
                 version = (m["version"] as? Long)?.toInt() ?: 1,
@@ -63,8 +69,11 @@ data class TvState(
                 typed = (m["typed"] as? String) ?: "",
                 current = cur,
                 recentIds = (m["recentIds"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+                pendingExtra = (m["pendingExtra"] as? Long)?.toInt() ?: 0,
+                answeredIds = (m["answeredIds"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 adminPin = (m["adminPin"] as? String) ?: "1234",
-                panelPin = (m["panelPin"] as? String) ?: ""
+                panelPin = (m["panelPin"] as? String) ?: "",
+                firstRunDone = m["firstRunDone"] as? Boolean ?: false
             )
         }
     }

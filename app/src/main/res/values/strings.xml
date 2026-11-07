@@ -3,7 +3,6 @@
     <string name="app_name">电视答题锁</string>
     <string name="lock_header">休息一下 · 先答对这道题</string>
     <string name="lock_hint">用遥控器选择答案；填空题直接按数字键输入</string>
-    <string name="lock_correct">答对了！</string>
     <string name="pin_prompt">请输入管理码</string>
     <string name="pin_hint">用遥控器数字键输入 4 位管理码，按错可长按返回键重输</string>
     <string name="setup_title">电视答题锁</string>
@@ -13,4 +12,9 @@
     <string name="setup_test_lock">测试锁机</string>
     <string name="setup_unlock">解除锁定</string>
     <string name="setup_autostart_note">提示：建议在电视「应用管理」中允许本应用开机自启动，断电重启后自动恢复锁定状态。</string>
+    <string name="setup_admin_on">防强杀保护：已开启</string>
+    <string name="setup_admin_off">开启防强杀保护（推荐）</string>
+    <string name="guard_accessibility_desc">开启后应用获得系统级防强杀地位：后台清理/一键加速无法再杀死电视答题锁，锁定功能不中断；答题锁屏期间还会拦截 HOME 键增强防逃。仅此而已，不会读取屏幕内容。</string>
+    <string name="guard_accessibility_summary">防强杀 + 防逃增强</string>
+    <string name="guard_accessibility_label">电视答题锁·守卫</string>
 </resources>

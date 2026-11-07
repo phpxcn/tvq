@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/bg"
-    android:fillViewport="true">
+    android:layout_height="match_parent">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/bg"
+        android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -140,6 +144,18 @@
                 android:text="@string/setup_unlock"
                 android:textColor="@color/textMain"
                 android:textSize="20sp" />
+
+            <Button
+                android:id="@+id/btnAdmin"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_btn"
+                android:padding="16dp"
+                android:text="@string/setup_admin_off"
+                android:textColor="@color/textMain"
+                android:textSize="20sp" />
         </LinearLayout>
 
         <TextView
@@ -150,4 +166,72 @@
             android:textColor="@color/textSub"
             android:textSize="16sp" />
     </LinearLayout>
-</ScrollView>
+    </ScrollView>
+
+    <!-- 首次启动引导：管理码设置浮层（遥控器数字键输入，无需输入法） -->
+    <LinearLayout
+        android:id="@+id/pinOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#CC101018"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="设置电视端管理码"
+            android:textColor="@color/textMain"
+            android:textSize="40sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvPinShow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="____"
+            android:textColor="@color/accent"
+            android:textSize="64sp"
+            android:textStyle="bold" />
+
+        <!-- 屏幕数字键盘（遥控器无数字键时用方向键+OK操作） -->
+        <GridLayout
+            android:id="@+id/gridPinPad"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:columnCount="3" />
+
+        <Button
+            android:id="@+id/btnKeepDefault"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:background="@drawable/bg_btn"
+            android:padding="14dp"
+            android:text="跳过，保留默认管理码 1234"
+            android:textColor="@color/textMain"
+            android:textSize="18sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="用遥控器数字键输入 4 位新管理码\n（家长解锁电视时使用，请牢记）"
+            android:textColor="@color/textSub"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="有数字键的遥控器也可直接按数字键输入，返回键退格"
+            android:textColor="@color/textSub"
+            android:textSize="18sp" />
+    </LinearLayout>
+</FrameLayout>

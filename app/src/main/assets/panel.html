@@ -107,12 +107,11 @@
   <button onclick="api('/api/unlock', {}, '已解锁，定时暂停')">解锁（暂停定时）</button>
 </div>
 
-<h2 class="sec">答题间隔（几分钟一题）</h2>
+<h2 class="sec">答题间隔</h2>
 <div class="chip-row">
-  <button class="chip" data-min="5">5 分钟</button>
-  <button class="chip" data-min="10">10 分钟</button>
-  <button class="chip" data-min="15">15 分钟</button>
-  <button class="chip" data-min="20">20 分钟</button>
+  <button class="chip" data-min="30">30 分钟</button>
+  <button class="chip" data-min="60">1 小时</button>
+  <button class="chip" data-min="120">2 小时</button>
 </div>
 <div class="custom-row">
   <input id="customMin" type="tel" inputmode="numeric" placeholder="自定义分钟（1~240）">
@@ -125,7 +124,7 @@
 <h2 class="sec">题库</h2>
 <div class="card">
   <div class="row"><span class="label">题库总量</span><span class="val" id="bankTotal">—</span></div>
-  <div class="row"><span class="label">分类</span><span class="val" id="bankCats" style="text-align:right">—</span></div>
+  <div class="row"><span class="label">未答剩题</span><span class="val" id="bankRemain">—</span></div>
   <div class="btns" style="margin-top:12px">
     <button class="ghost upload-btn">
       上传新题库
@@ -134,8 +133,17 @@
     <a class="chip" style="text-align:center;text-decoration:none" href="/api/bank" download>导出题库</a>
   </div>
   <div class="note" style="margin-top:10px">
-    上传后自动校验并热更新，电视端正在锁定的题目不受影响（孩子完全无感知）。格式：JSON，分类 -> 题目数组；带 opts 是选择题，不带是填空题。
+    上传后自动校验并热更新，电视端正在锁定的题目不受影响（孩子完全无感知）。格式：JSON 题目数组，不分学科，语文、数学、英语都放一起即可。
   </div>
+  <details style="margin-top:10px">
+    <summary style="color:var(--accent);cursor:pointer;font-size:14px;font-weight:600">展开查看题库 JSON 样例</summary>
+    <pre style="background:#101c28;border:1px solid var(--line);border-radius:12px;padding:12px;overflow-x:auto;font-size:12px;line-height:1.7;color:#d8e2ee;margin-top:8px">[
+  { "q": "5+7等于几？", "ans": "12" },
+  { "q": "9+6等于几？", "opts": ["12", "15", "18"], "ans": "2" },
+  { "q": "cat 的中文意思是？", "opts": ["狗", "猫", "帽子", "杯子"], "ans": "猫" }
+]</pre>
+    <div class="note" style="margin-top:6px">带 opts 是选择题（ans 填 1 起始的选项序号，也可直接写选项文本，如上例第三题）；不带 opts 是填空题（ans 为答案文本）。最少 1 题，最多 5000 题。旧版分类格式（按学科分组的对象）也能正常导入。</div>
+  </details>
 </div>
 
 <h2 class="sec">安全</h2>
@@ -154,14 +162,18 @@
 <div class="toast" id="toast"></div>
 
 <script>
-var pin = localStorage.getItem('tvlock_pin') || '';
+var pin = sessionStorage.getItem('tvlock_pin') || '';
 var needPin = false;
 var status = null;
 
-function getPin() { return pin || (localStorage.getItem('tvlock_pin') || ''); }
+// 管理码用 sessionStorage：刷新页面不用重输，关闭页面/标签页后必须重新输入
+// （不落 localStorage，防止孩子拿到家长手机直接解锁）
+localStorage.removeItem('tvlock_pin');
+
+function getPin() { return pin; }
 
 function headers() {
-  var h = { 'Content-Type': 'application/json' };
+  var h = { 'Content-Type': 'application/json; charset=utf-8' };
   if (getPin()) h['X-TVLock-Pin'] = getPin();
   return h;
 }
@@ -229,11 +241,8 @@ function refresh() {
       }
 
       document.getElementById('bankTotal').textContent = (s.bank && s.bank.total != null) ? s.bank.total + ' 题' : '—';
-      var cats = '';
-      if (s.bank && s.bank.categories) {
-        cats = s.bank.categories.map(function (c) { return c.name + ' ' + c.count; }).join(' · ');
-      }
-      document.getElementById('bankCats').textContent = cats || '—';
+      var rem = (s.bank && s.bank.remaining != null) ? s.bank.remaining : null;
+      document.getElementById('bankRemain').textContent = (rem != null) ? (rem + ' 题（答对的不再出，答完全部从头再来）') : '—';
       document.getElementById('pinState').textContent = s.hasPin ? '已开启' : '未开启';
 
       // chips
@@ -258,7 +267,7 @@ function api(path, body, okMsg) {
       if (res.j && res.j.ok) {
         toast(okMsg || '操作成功', 'ok');
       } else if (res.j && res.j.needPin) {
-        localStorage.removeItem('tvlock_pin'); pin = '';
+        pin = ''; sessionStorage.removeItem('tvlock_pin');
         document.getElementById('pinbar').className = 'pinbar show';
         toast(res.j.error || '管理码不对', 'err');
       } else {
@@ -276,14 +285,16 @@ function savePin() {
     .then(function (r) { return r.json(); })
     .then(function (j) {
       if (j.ok) {
-        pin = v; localStorage.setItem('tvlock_pin', v);
+        pin = v; sessionStorage.setItem('tvlock_pin', v);
+        document.getElementById('pinInput').value = '';
         document.getElementById('pinbar').className = 'pinbar';
         toast('管理码已保存', 'ok');
         refresh();
       } else {
         toast('管理码不对', 'err');
       }
-    });
+    })
+    .catch(function () { toast('网络错误，请重试', 'err'); });
 }
 
 function setPin() {
@@ -293,31 +304,35 @@ function setPin() {
     .then(function (r) { return r.json(); })
     .then(function (j) {
       if (j.ok) {
-        if (v) { pin = v; localStorage.setItem('tvlock_pin', v); }
-        else { pin = ''; localStorage.removeItem('tvlock_pin'); }
+        if (v) { pin = v; sessionStorage.setItem('tvlock_pin', v); }
+        else { pin = ''; sessionStorage.removeItem('tvlock_pin'); }
+        document.getElementById('setPinInput').value = '';
         toast(v ? '面板管理码已开启' : '面板管理码已关闭', 'ok');
         refresh();
       } else if (j.needPin) {
-        localStorage.removeItem('tvlock_pin'); pin = '';
+        pin = ''; sessionStorage.removeItem('tvlock_pin');
         document.getElementById('pinbar').className = 'pinbar show';
         toast(j.error || '管理码不对', 'err');
       } else {
         toast(j.error || '设置失败', 'err');
       }
-    });
+    })
+    .catch(function () { toast('网络错误，请重试', 'err'); });
 }
 
 document.querySelectorAll('.chip[data-min]').forEach(function (c) {
   c.addEventListener('click', function () {
     var m = parseInt(c.getAttribute('data-min'));
-    api('/api/interval', { minutes: m }, '已改为每 ' + m + ' 分钟一题');
+    var txt = m >= 60 ? (m / 60) + ' 小时' : m + ' 分钟';
+    api('/api/interval', { minutes: m }, '已改为每 ' + txt + ' 一题');
   });
 });
 
 function setCustomMin() {
   var v = parseInt(document.getElementById('customMin').value.trim());
   if (!v || v < 1 || v > 240) { toast('请输入 1~240 之间的分钟数', 'err'); return; }
-  api('/api/interval', { minutes: v }, '已改为每 ' + v + ' 分钟一题');
+  var txt = (v % 60 === 0 && v >= 60) ? (v / 60) + ' 小时' : v + ' 分钟';
+  api('/api/interval', { minutes: v }, '已改为每 ' + txt + ' 一题');
 }
 
 document.getElementById('fileInput').addEventListener('change', function (e) {
@@ -329,10 +344,9 @@ document.getElementById('fileInput').addEventListener('change', function (e) {
       .then(function (r) { return r.json(); })
       .then(function (j) {
         if (j.ok) {
-          var cats = (j.categories || []).map(function (c) { return c.name + ' ' + c.count + ' 题'; }).join('，');
-          toast('导入成功：共 ' + j.total + ' 题' + (cats ? '（' + cats + '）' : '') + (j.note ? '；' + j.note : ''), 'ok');
+          toast('导入成功：共 ' + j.total + ' 题' + (j.note ? '；' + j.note : ''), 'ok');
         } else if (j.needPin) {
-          localStorage.removeItem('tvlock_pin'); pin = '';
+          pin = ''; sessionStorage.removeItem('tvlock_pin');
           document.getElementById('pinbar').className = 'pinbar show';
           toast(j.error || '管理码不对', 'err');
         } else {

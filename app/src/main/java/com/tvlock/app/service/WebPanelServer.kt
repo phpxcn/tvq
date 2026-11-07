@@ -56,8 +56,13 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
 
     // ---------- 各接口 ----------
 
-    private fun servePanel(): Response =
-        newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", panelHtml)
+    private fun servePanel(): Response {
+        val r = newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", panelHtml)
+        // 面板是纯内网轻页面且随版本升级迭代：禁缓存，避免手机浏览器
+        // 长期复用旧版页面（升级 APK 后功能「看起来没反应」的根源）
+        r.addHeader("Cache-Control", "no-store")
+        return r
+    }
 
     private fun noContent(): Response =
         newFixedLengthResponse(Response.Status.NO_CONTENT, "text/plain", "")
@@ -76,7 +81,6 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
         m["typed"] = st.typed
         m["question"] = st.current?.let { q ->
             LinkedHashMap<String, Any?>().apply {
-                put("cat", q.cat)
                 put("q", q.q)
                 if (q.opts != null) put("opts", q.opts)
                 put("choice", q.isChoice)
@@ -84,7 +88,7 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
         }
         val bank = LinkedHashMap<String, Any?>()
         bank["total"] = core.bank.total()
-        bank["categories"] = core.bank.perCat().map { LinkedHashMap<String, Any?>().apply { put("name", it.first); put("count", it.second) } }
+        bank["remaining"] = core.bankRemaining()
         bank["dir"] = core.bank.bankDir.absolutePath
         m["bank"] = bank
         m["ip"] = core.statusIp()
@@ -128,7 +132,6 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
             val m = LinkedHashMap<String, Any?>()
             m["ok"] = true
             m["total"] = r.total
-            m["categories"] = r.perCat.map { LinkedHashMap<String, Any?>().apply { put("name", it.first); put("count", it.second) } }
             if (r.note != null) m["note"] = r.note
             json(Response.Status.OK, m)
         } else {
@@ -176,9 +179,19 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
 
     private fun readRawBody(session: IHTTPSession): String {
         return try {
-            val files = HashMap<String, String>()
-            session.parseBody(files)
-            files["postData"] ?: ""
+            // NanoHTTPD 2.3.1 对未声明 charset 的 Content-Type 用 US-ASCII 解码 postData，
+            // 中文会整串变成 U+FFFD；这里绕开 parseBody 直接读原始字节，统一按 UTF-8 解码。
+            val len = session.headers["content-length"]?.toIntOrNull() ?: 0
+            if (len <= 0) "" else {
+                val buf = ByteArray(len)
+                var off = 0
+                while (off < len) {
+                    val n = session.inputStream.read(buf, off, len - off)
+                    if (n < 0) break
+                    off += n
+                }
+                String(buf, 0, off, Charsets.UTF_8)
+            }
         } catch (e: Exception) {
             ""
         }

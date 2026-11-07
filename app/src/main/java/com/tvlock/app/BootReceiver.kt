@@ -29,5 +29,23 @@ class BootReceiver : BroadcastReceiver() {
         } catch (t: Throwable) {
             AppCore.log("开机自启失败：$t")
         }
+        // 同步拉起独立看门狗 App（双通道开机自启，看门狗自身也有 BOOT 广播）
+        try {
+            val wd = Intent().apply {
+                setComponent(
+                    android.content.ComponentName(
+                        "com.android.tvlockwd",
+                        "com.tvlock.watchdog.WatchdogService"
+                    )
+                )
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                context.startForegroundService(wd)
+            } else {
+                context.startService(wd)
+            }
+        } catch (_: Throwable) {
+            // 看门狗未安装
+        }
     }
 }

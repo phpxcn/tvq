@@ -6,7 +6,7 @@ package com.tvlock.app.data
  *  - 不带 opts = 填空题（ans 为答案文本，口算全部是数字）
  */
 data class Question(
-    val cat: String,          // 分类，如 math / pinyin
+    val cat: String = "",      // 分类（仅旧分类格式题库保留；新纯数组格式为空串）
     val q: String,            // 题干
     val opts: List<String>?,  // null = 填空题
     val ans: String           // 选择题：归一化为 "1".."n"；填空题：答案文本
@@ -79,6 +79,6 @@ data class Question(
         }
 
         /** 题库为空时的内置兜底题（保证锁机功能永不停摆） */
-        val FALLBACK = Question("math", "1+1等于几？", null, "2")
+        val FALLBACK = Question("", "1+1等于几？", null, "2")
     }
 }

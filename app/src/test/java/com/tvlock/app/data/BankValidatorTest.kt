@@ -9,7 +9,24 @@ import org.junit.Test
 class BankValidatorTest {
 
     @Test
-    fun validMultiCategoryBank() {
+    fun validFlatArrayBank() {
+        val text = """
+            [
+              {"q":"5+7等于几？","ans":"12"},
+              {"q":"9+6等于几？","opts":["12","15","18"],"ans":"2"},
+              {"q":"cat 的中文意思是？","opts":["狗","猫"],"ans":"猫"}
+            ]
+        """.trimIndent()
+        val r = BankValidator.validate(text)
+        assertTrue(r.ok)
+        val bank = r.bank!!
+        assertEquals(3, bank.total())
+        assertTrue(bank.all().all { it.cat.isEmpty() })  // 纯数组格式不带分类
+        assertNull(r.error)
+    }
+
+    @Test
+    fun legacyCategoryBankStillValid() {
         val text = """
             {
               "math": [
@@ -25,8 +42,8 @@ class BankValidatorTest {
         assertTrue(r.ok)
         val bank = r.bank!!
         assertEquals(3, bank.total())
-        assertEquals(2, bank.cats["math"]!!.size)
-        assertEquals(1, bank.cats["pinyin"]!!.size)
+        assertTrue(bank.all().any { it.cat == "math" })   // 旧格式保留分类名（id 稳定，已答对记录不丢）
+        assertTrue(bank.all().any { it.cat == "pinyin" })
         assertNull(r.error)
     }
 
@@ -44,8 +61,14 @@ class BankValidatorTest {
     }
 
     @Test
-    fun topLevelNotObject() {
-        val r = BankValidator.validate("[1,2,3]")
+    fun topLevelNotArrayOrObject() {
+        val r = BankValidator.validate("42")
+        assertNull(r.bank)
+    }
+
+    @Test
+    fun arrayWithoutValidQuestionsFails() {
+        val r = BankValidator.validate("[1,2,3]")  // 合法数组但全是坏题
         assertNull(r.bank)
     }
 
@@ -89,12 +112,12 @@ class BankValidatorTest {
 
     @Test
     fun oversizeRejected() {
-        val sb = StringBuilder("{\"math\":[")
+        val sb = StringBuilder("[")
         for (i in 1..BankValidator.MAX_QUESTIONS + 1) {
             if (i > 1) sb.append(',')
             sb.append("{\"q\":\"题$i\",\"ans\":\"1\"}")
         }
-        sb.append("]}")
+        sb.append("]")
         val r = BankValidator.validate(sb.toString())
         assertNull(r.bank)
     }
@@ -102,20 +125,31 @@ class BankValidatorTest {
     @Test
     fun ansAsTextConvertedToIndex() {
         val r = BankValidator.validate(
-            """{"pinyin":[{"q":"声调","opts":["一声","二声"],"ans":"二声"}]}"""
+            """[{"q":"声调","opts":["一声","二声"],"ans":"二声"}]"""
         )
         assertTrue(r.ok)
-        assertEquals("2", r.bank!!.cats["pinyin"]!![0].ans)
+        assertEquals("2", r.bank!!.all()[0].ans)
     }
 
     @Test
     fun bankJsonRoundTrip() {
         val text = """
-            {"math":[{"q":"2+3等于几？","ans":"5"},{"q":"4+4等于几？","opts":["6","7","8","9"],"ans":"3"}]}
+            [{"q":"2+3等于几？","ans":"5"},{"q":"4+4等于几？","opts":["6","7","8","9"],"ans":"3"}]
         """.trimIndent()
         val b = BankValidator.validate(text).bank!!
         val json = b.toBankJson()
+        assertTrue(json.trim().startsWith("["))  // 导出为纯数组格式
         val b2 = BankValidator.validate(json).bank!!
         assertEquals(b.all(), b2.all())
+    }
+
+    @Test
+    fun legacyBankExportedAsFlatArray() {
+        // 旧分类格式导出后统一为纯数组（分类名不导出）
+        val b = BankValidator.validate("""{"math":[{"q":"1+1等于几？","ans":"2"}]}""").bank!!
+        val json = b.toBankJson()
+        val b2 = BankValidator.validate(json).bank!!
+        assertEquals(1, b2.total())
+        assertTrue(b2.all()[0].cat.isEmpty())
     }
 }

@@ -85,6 +85,9 @@ object AppCore {
         Log.d(TAG, msg)
     }
 
+    /** 核心是否已在本进程初始化（供 GuardianReceiver 判断进程死活，避免无谓拉服务） */
+    fun isRunning(): Boolean = started
+
     /** 初始化（幂等，Service / Activity 都会调用，保证任何入口进来核心都在运行） */
     fun ensureStarted(context: Context) {
         synchronized(coreLock) {
@@ -111,9 +114,76 @@ object AppCore {
                 log("面板服务器启动失败：$t")
             }
             log("AppCore 启动完成，状态=${state}")
+            scheduleNextGuardian()
+            startWatchdogApp()
             handler.postDelayed(this::tick, 500)
             // 开机/服务冷启动立即判定一次：断电期间到点/锁定中的场景立刻恢复
             tick()
+        }
+    }
+
+    /** 看门狗 App 进程是否存活（探活：活着就不拉，避免高频 startService 触发反滥用） */
+    private fun isWatchdogAlive(): Boolean {
+        return try {
+            val am = appContext.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            am.runningAppProcesses?.any { it.processName == "com.android.tvlockwd" } ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * 反向拉起独立看门狗 App（com.android.tvlockwd）的守卫服务：
+     * 看门狗每 3 秒探活本 App（死了才拉，显式 startService 可唤醒 force-stop
+     * 后的 stopped 进程，绕过闹钟被清+广播被屏蔽），双向互保。
+     * 看门狗未安装时静默（不影响主 App 任何功能）。
+     */
+    private fun startWatchdogApp(quiet: Boolean = false) {
+        try {
+            val i = android.content.Intent().apply {
+                setComponent(
+                    android.content.ComponentName(
+                        "com.android.tvlockwd",
+                        "com.tvlock.watchdog.WatchdogService"
+                    )
+                )
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                appContext.startForegroundService(i)
+            } else {
+                appContext.startService(i)
+            }
+            if (!quiet) log("看门狗 App 已拉起（双向互保）")
+        } catch (_: Throwable) {
+            // 看门狗未安装：静默降级
+        }
+    }
+
+    // ---------- 自愈心跳 ----------
+
+    /**
+     * AlarmManager 周期闹钟（约 10 分钟，非精确不耗电）：进程被一键清理等场景杀死后
+     * 由 GuardianReceiver 重新拉起常驻服务。一次性闹钟，每次触发后在接收器里重新排队。
+     */
+    fun scheduleNextGuardian() {
+        if (!started) return // 核心未初始化：由服务拉起后的 ensureStarted 注册
+        try {
+            val am = appContext.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+            val intent = Intent(appContext, GuardianReceiver::class.java).apply {
+                action = GuardianReceiver.ACTION_PING
+            }
+            val pi = android.app.PendingIntent.getBroadcast(
+                appContext, 1001, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            val triggerAt = System.currentTimeMillis() + 10 * 60_000L
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                am.setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi)
+            } else {
+                am.set(android.app.AlarmManager.RTC_WAKEUP, triggerAt, pi)
+            }
+        } catch (t: Throwable) {
+            log("自愈心跳注册失败：$t")
         }
     }
 
@@ -121,10 +191,23 @@ object AppCore {
 
     private var lastRelaunchAt = 0L
 
+    /** 看门狗拉回间隔（连续拉不回时指数退避，上限 30s） */
+    private var relaunchInterval = 600L
+
+    /** 上次反向拉看门狗 App 的时间（探活+死才拉，拉起是事件驱动低频） */
+    private var lastWatchdogPullAt = 0L
+
     private fun tick() {
         val st = state
         val now = System.currentTimeMillis()
         val decision = Scheduler.evaluate(st, now)
+
+        // 周期性探活看门狗 App（30 秒一次）：死了才拉（双向互保的反向链）。
+        // 不能高频互拉 startService：会触发 ROM 的反滥用强杀
+        if (now - lastWatchdogPullAt >= 30_000L) {
+            lastWatchdogPullAt = now
+            if (!isWatchdogAlive()) startWatchdogApp(quiet = true)
+        }
 
         if (decision.action == Scheduler.Action.LOCK_NOW) {
             log("锁机触发：${decision.reason}")
@@ -136,14 +219,32 @@ object AppCore {
             }
         }
 
-        // 看门狗：锁定中但锁屏不在前台 -> 500ms 内拉回（HOME 键逃逸兜底）
+        // 倒计时悬浮窗：布防待机时右上角常驻（进程可见性 + 心理预期，
+        // 完全穿透不影响任何页面操作）；锁定中（锁屏全屏）/暂停定时时隐藏。
+        // 答完题 unlock 后 armed 重置，倒计时自动重新显示计时。
+        // 此处重读 state：本 tick 若刚锁机，开头旧引用 locked 仍为 false，
+        // 用旧值会闪现一次悬浮窗再等下个 tick 收掉
+        val stLive = state
+        if (stLive.armed && !stLive.locked) {
+            CountdownOverlay.update(appContext, Scheduler.remainingMs(stLive, now) ?: 0L)
+        } else {
+            CountdownOverlay.hide()
+        }
+        // 看门狗：锁定中但锁屏不在前台 -> 拉回（HOME 键逃逸兜底）
+        // 指数退避：拉不回时间隔翻倍至 30s——频繁 startActivity 会触发系统
+        // 反滥用保护（EventSequenceValidator）导致被强杀，恶性循环
         val st2 = state
         if (st2.locked && !LockActivity.isFront) {
+            // 确保防逃遮罩在位（onPause 已零空窗弹出，这里兜底防失败）
+            GuardOverlay.show(appContext)
             val now2 = System.currentTimeMillis()
-            if (now2 - lastRelaunchAt > 600) {
+            if (now2 - lastRelaunchAt > relaunchInterval) {
                 lastRelaunchAt = now2
                 relaunchLockActivity()
+                relaunchInterval = (relaunchInterval * 2).coerceAtMost(30_000L)
             }
+        } else if (st2.locked && LockActivity.isFront) {
+            relaunchInterval = 600L // 锁屏已回前台，恢复正常间隔
         }
 
         if (started) handler.postDelayed(this::tick, 500)
@@ -159,11 +260,12 @@ object AppCore {
         }
     }
 
-    /** 定时到点触发的锁机 */
+    /** 定时到点触发的锁机（排除已答对过的题与最近做过的题） */
     private fun lockNowInternal() {
-        val recent = state.recentIds
+        val st0 = state
+        val recent = st0.recentIds
         val q: Question = try {
-            bankMgr.pickQuestion(recent)
+            bankMgr.pickQuestion(st0.answeredIds + recent)
         } catch (t: Throwable) {
             log("抽题失败：$t")
             Question.FALLBACK
@@ -183,13 +285,20 @@ object AppCore {
         relaunchLockActivity()
     }
 
-    /** 解锁并暂停定时（面板「解锁」/ 电视端管理码） */
+    /** 解锁并暂停定时（面板「解锁」/ 电视端管理码）；附加题债一并清零 */
     fun unlock(disarm: Boolean = true) {
         synchronized(coreLock) {
             states.mutate {
-                it.copy(locked = false, armed = if (disarm) false else it.armed, lastSeenAt = System.currentTimeMillis())
+                it.copy(
+                    locked = false,
+                    armed = if (disarm) false else it.armed,
+                    pendingExtra = 0,
+                    lastSeenAt = System.currentTimeMillis()
+                )
             }
         }
+        // 解锁后立即收起防逃遮罩（Activity 可能已死，必须全局显式收）
+        GuardOverlay.hide()
         notifyState()
     }
 
@@ -231,35 +340,74 @@ object AppCore {
         notifyState()
     }
 
-    /** 提交答案：答对自动解锁并重置倒计时；答错只累计次数，绝不换题 */
-    fun submitAnswer(input: String): Boolean {
+    /** 提交答案的三种结果：答错 / 答对但还有附加题 / 答对并解锁 */
+    enum class SubmitResult { WRONG, NEXT, DONE }
+
+    /**
+     * 提交答案：
+     *  - 答错：不换题，累计答错次数；本题首次答错会追加一道附加题
+     *    （答对后需连答，答错的债断电也保留）
+     *  - 答对且还有附加题：出下一道新题继续（answeredIds 记入已答）
+     *  - 答对且无附加题：解锁并重置倒计时
+     */
+    fun submitAnswer(input: String): SubmitResult {
         synchronized(coreLock) {
             val st = state
-            if (!st.locked) return true
-            val q = st.current ?: return true
+            if (!st.locked) return SubmitResult.DONE
+            val q = st.current ?: return SubmitResult.DONE
             val correct = try {
                 q.checkAnswer(input)
             } catch (_: Throwable) {
                 false
             }
             val now = System.currentTimeMillis()
-            if (correct) {
+            if (!correct) {
                 states.mutate {
+                    val firstMiss = it.wrongAttempts == 0
                     it.copy(
-                        locked = false,
-                        wrongAttempts = 0,
-                        typed = "",
-                        nextLockAt = if (it.armed) now + it.intervalMin * 60_000 else it.nextLockAt,
+                        wrongAttempts = it.wrongAttempts + 1,
+                        pendingExtra = if (firstMiss) it.pendingExtra + 1 else it.pendingExtra,
                         lastSeenAt = now
                     )
                 }
-            } else {
-                states.mutate {
-                    it.copy(wrongAttempts = it.wrongAttempts + 1, lastSeenAt = now)
+                return SubmitResult.WRONG
+            }
+            // 答对：记入已答集（永不再出）；答错债未清则出新题连答
+            val answered = (st.answeredIds + q.id).distinct()
+            if (st.pendingExtra > 0) {
+                val next: Question = try {
+                    bankMgr.pickQuestion(answered + st.recentIds)
+                } catch (t: Throwable) {
+                    log("抽题失败：$t")
+                    Question.FALLBACK
                 }
+                states.mutate {
+                    it.copy(
+                        locked = true,
+                        current = next,
+                        wrongAttempts = 0,
+                        typed = "",
+                        pendingExtra = it.pendingExtra - 1,
+                        answeredIds = answered,
+                        recentIds = (it.recentIds + next.id).takeLast(50),
+                        lastSeenAt = now
+                    )
+                }
+                notifyState()
+                return SubmitResult.NEXT
+            }
+            states.mutate {
+                it.copy(
+                    locked = false,
+                    wrongAttempts = 0,
+                    typed = "",
+                    answeredIds = answered,
+                    nextLockAt = if (it.armed) now + it.intervalMin * 60_000 else it.nextLockAt,
+                    lastSeenAt = now
+                )
             }
             notifyState()
-            return correct
+            return SubmitResult.DONE
         }
     }
 
@@ -278,6 +426,31 @@ object AppCore {
     }
 
     fun checkAdminPin(pin: String): Boolean = state.adminPin == pin
+
+    /** 题库剩余未答题数（供锁屏/面板展示） */
+    fun bankRemaining(): Int = try {
+        bankMgr.remainingCount(state.answeredIds)
+    } catch (_: Throwable) {
+        0
+    }
+
+    /** 首次启动引导完成标记 */
+    fun setFirstRunDone() {
+        synchronized(coreLock) {
+            states.mutate { it.copy(firstRunDone = true) }
+        }
+        notifyState()
+    }
+
+    /** 设置电视端管理码（4 位数字，空串拒绝） */
+    fun setAdminPin(pin: String): Boolean {
+        if (pin.length != 4 || pin.any { it !in '0'..'9' }) return false
+        synchronized(coreLock) {
+            states.mutate { it.copy(adminPin = pin) }
+        }
+        notifyState()
+        return true
+    }
 
     // ---------- UI 辅助 ----------
 

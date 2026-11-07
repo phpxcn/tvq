@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!-- 锁定屏幕（备用能力；主用途是激活设备管理器，获得「不可强行停止」地位） -->
+        <force-lock />
+    </uses-policies>
+</device-admin>
