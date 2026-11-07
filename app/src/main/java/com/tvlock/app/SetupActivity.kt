@@ -118,15 +118,14 @@ class SetupActivity : Activity() {
     private fun showGuardGuide() {
         val a11y = GuardAccessibilityService.isActive(this)
         AlertDialog.Builder(this)
-            .setTitle(if (a11y) "防护状态" else "防逃防杀守卫（强烈建议开启）")
+            .setTitle(if (a11y) "防护状态" else "防逃防杀守卫（若设备提供）")
             .setMessage(
                 (if (a11y) "守卫已开启，防护最强：\n" else "") +
-                    "开启后（仅需一次）：\n" +
+                    "开启后：\n" +
                     "· 答题锁定中按「主页键/最近任务键」直接被拦截，锁屏纹丝不动\n" +
                     "· 应用获得系统级「不可强杀」地位，后台清理工具杀不死\n\n" +
-                    (if (a11y) "" else "实测本机未开启时：孩子按主页键会触发系统连杀，锁屏退回桌面。\n\n" +
-                        "开启路径（遥控器）：\n设置 → 通用设置（部分机型：更多设置）→ 无障碍 →\n电视答题锁·守卫 → 开启\n\n") +
-                    "找不到入口可忽略，不影响使用；极端情况重新打开本应用或重启设备会自动恢复全部锁定状态。"
+                    (if (a11y) "" else "在电视设置里找「无障碍」入口，列表中开启\n「电视答题锁·守卫」。部分机型（如实测的小米激光投影仪）\n设置里没有该入口（ROM 已裁剪），无法开启——不影响其他功能，\n按主页键会退到桌面，重新打开本应用即恢复锁屏。\n\n") +
+                    "极端情况重新打开本应用或重启设备会自动恢复全部锁定状态。"
             )
             .setPositiveButton(if (a11y) "知道了" else "尝试打开设置") { _, _ ->
                 if (!a11y) GuardAccessibilityService.openSettings(this)

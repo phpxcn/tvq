@@ -44,7 +44,7 @@ class GuardAccessibilityService : AccessibilityService() {
             }
             android.widget.Toast.makeText(
                 context,
-                "请用遥控器手动开启：设置 → 通用设置（或更多设置）→ 无障碍 → 电视答题锁·守卫",
+                "本机没有无障碍设置入口（ROM 已裁剪）？该机型不支持按键拦截，可忽略；\n或手动在电视设置里找「无障碍」并开启「电视答题锁·守卫」",
                 android.widget.Toast.LENGTH_LONG
             ).show()
         }

@@ -21,11 +21,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # ubuntu runner 自带 Android SDK 基础环境，补装本项目所需组件
+      # ubuntu runner 自带 Android SDK 基础环境，但 sdkmanager 不在 PATH（在 cmdline-tools 下），
+      # 先定位完整路径再补装本项目所需组件
       - name: 安装 Android SDK 组件
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          SM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SM" ]; then SM="$(find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null | head -1)"; fi
+          echo "sdkmanager: $SM"
+          yes | "$SM" --licenses > /dev/null || true
+          "$SM" "platforms;android-34" "build-tools;34.0.0"
 
       # 缓存 Gradle 依赖，加速后续构建
       - name: Gradle 缓存

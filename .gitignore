@@ -16,4 +16,4 @@ local.properties
 *.log
 
 # 正式命名 APK 产物（build.sh 产出，发版用 CI Release）
-TVLock-v*.apk
+TVLock-*.apk
