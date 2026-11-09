@@ -16,10 +16,12 @@ import java.io.ByteArrayInputStream
  * POST /api/arm       恢复定时锁机
  * POST /api/interval  修改答题间隔 {"minutes": 5}
  * POST /api/upload    无感导入题库（body 为题库 JSON 文本）
- * POST /api/pin       设置/关闭面板管理码 {"pin": "1234"}（空串关闭）
+ * POST /api/pin       设置/修改统一管理码 {"pin": "8888"}（4位数字，禁用默认1234；首次免验证，修改需带旧码头 X-TVLock-Pin）
  * POST /api/pin/verify 校验管理码
  *
- * 开启面板管理码后，所有 POST 需带 X-TVLock-Pin 请求头。
+ * 统一管理码 adminPin（电视端应急解锁 + 手机面板鉴权共用同一个码，修改统一在本面板）：
+ *  未设置（仍为默认 1234）时，仅 /api/pin 可免验证调用以完成首次设置，其余 POST 一律拒绝；
+ *  设置后所有 POST 必须携带正确 X-TVLock-Pin，修改管理码亦需校验旧码。
  */
 class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
 
@@ -96,7 +98,7 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
         m["port"] = AppCore.PORT
         m["serverRunning"] = true
         m["mdnsActive"] = AppCore.mdnsActive
-        m["hasPin"] = st.panelPin.isNotEmpty()
+        m["hasPin"] = st.adminPin != com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN
         m["time"] = now
         return json(Response.Status.OK, m)
     }
@@ -115,7 +117,7 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
     }
 
     private fun handleInterval(session: IHTTPSession): Response {
-        checkPin(session)?.let { return it }
+        requirePin(session)?.let { return it }
         val body = readJsonBody(session) ?: return badRequest("请求体不是 JSON")
         val minutes = (body["minutes"] as? Long) ?: (body["minutes"] as? Int)?.toLong() ?: (body["minutes"] as? Double)?.toLong()
         if (minutes == null) return badRequest("缺少 minutes 字段")
@@ -124,7 +126,7 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
     }
 
     private fun handleUpload(session: IHTTPSession): Response {
-        checkPin(session)?.let { return it }
+        requirePin(session)?.let { return it }
         val raw = readRawBody(session)
         if (raw.isBlank()) return badRequest("上传内容为空")
         val r = core.importBankText(raw)
@@ -140,40 +142,52 @@ class WebPanelServer(private val core: AppCore) : NanoHTTPD(AppCore.PORT) {
     }
 
     private fun handleSetPin(session: IHTTPSession): Response {
-        // 已设置管理码时，修改必须携带正确旧码
-        checkPin(session)?.let { return it }
+        // 已设置管理码：修改必须校验旧码（X-TVLock-Pin）；未设置：首次免验证直接设置
+        if (isPinSet()) requirePin(session)?.let { return it }
         val body = readJsonBody(session) ?: return badRequest("请求体不是 JSON")
         val pin = (body["pin"] as? String).orEmpty()
-        if (!core.setPanelPin(pin)) return badRequest("管理码必须是 4 位数字，或空串表示关闭")
+        if (!core.setAdminPin(pin)) return badRequest("管理码必须是 4 位数字，且不能使用默认值 1234")
         return ok()
     }
 
     private fun handleVerifyPin(session: IHTTPSession): Response {
+        // 未设置时前端走「首次设置」流程，不会调用；兜底放行
+        if (!isPinSet()) return ok()
         val body = readJsonBody(session) ?: return badRequest("请求体不是 JSON")
         val pin = (body["pin"] as? String).orEmpty()
-        return if (core.state.panelPin.isNotEmpty() && core.state.panelPin == pin) ok()
+        return if (core.checkAdminPin(pin)) ok()
         else json(Response.Status.FORBIDDEN, mapOf("ok" to false, "error" to "管理码不对"))
     }
 
     // ---------- 工具 ----------
 
-    /** 面板管理码开启后，POST 必须携带正确 X-TVLock-Pin */
+    /** POST 必须已设置管理码且携带正确 X-TVLock-Pin */
     private fun handleSimplePost(
         session: IHTTPSession,
         action: () -> Response
     ): Response {
-        val err = checkPin(session)
+        val err = requirePin(session)
         if (err != null) return err
         // 消费 body（保持连接语义干净）
         readRawBody(session)
         return action()
     }
 
-    private fun checkPin(session: IHTTPSession): Response? {
-        val pin = core.state.panelPin
-        if (pin.isEmpty()) return null
+    /** 管理码是否已设置（非默认值 1234） */
+    private fun isPinSet(): Boolean =
+        core.state.adminPin != com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN
+
+    /**
+     * 鉴权门禁：未设置管理码时拒绝并提示先去「安全」卡片设置；
+     * 已设置则校验 X-TVLock-Pin 请求头。返回 null 表示放行。
+     */
+    private fun requirePin(session: IHTTPSession): Response? {
+        if (!isPinSet()) return json(
+            Response.Status.FORBIDDEN,
+            mapOf("ok" to false, "error" to "请先在「安全」卡片设置管理码", "needPin" to true)
+        )
         val provided = session.headers["x-tvlock-pin"]
-        return if (provided == pin) null
+        return if (provided == core.state.adminPin) null
         else json(Response.Status.FORBIDDEN, mapOf("ok" to false, "error" to "管理码不对", "needPin" to true))
     }
 

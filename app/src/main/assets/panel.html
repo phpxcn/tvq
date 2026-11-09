@@ -149,13 +149,13 @@
 <h2 class="sec">安全</h2>
 <div class="card">
   <div class="row">
-    <span class="label">面板管理码</span><span class="val" id="pinState">未开启</span>
+    <span class="label">管理码（电视/手机共用）</span><span class="val" id="pinState">未设置</span>
   </div>
   <div class="custom-row">
-    <input id="setPinInput" type="tel" maxlength="4" inputmode="numeric" placeholder="新管理码（4位数字，留空关闭）">
+    <input id="setPinInput" type="tel" maxlength="4" inputmode="numeric" placeholder="4 位数字，不能用 1234">
     <button class="ghost" style="width:auto" onclick="setPin()">保存</button>
   </div>
-  <div class="note" style="margin-top:10px">开启后，每次打开面板需要输入管理码，防止孩子用手机解锁。电视端应急管理码在首次启动时强制设置（在锁屏界面按「上上下下左右左右」唤出输入）。</div>
+  <div class="note" style="margin-top:10px">设置后，手机面板所有操作与电视端应急解锁（锁屏按「上上下下左右左右」唤出）共用此码。首次设置免旧码，修改需验证当前码；请牢记，遗忘只能清除应用数据重置。</div>
 </div>
 
 <div class="note" style="text-align:center;margin-top:20px" id="foot"></div>
@@ -243,7 +243,7 @@ function refresh() {
       document.getElementById('bankTotal').textContent = (s.bank && s.bank.total != null) ? s.bank.total + ' 题' : '—';
       var rem = (s.bank && s.bank.remaining != null) ? s.bank.remaining : null;
       document.getElementById('bankRemain').textContent = (rem != null) ? (rem + ' 题（答对的不再出，答完全部从头再来）') : '—';
-      document.getElementById('pinState').textContent = s.hasPin ? '已开启' : '未开启';
+      document.getElementById('pinState').textContent = s.hasPin ? '已设置' : '未设置（请先设置）';
 
       // chips
       var chips = document.querySelectorAll('.chip[data-min]');
@@ -299,15 +299,15 @@ function savePin() {
 
 function setPin() {
   var v = document.getElementById('setPinInput').value.trim();
-  if (v !== '' && !/^\d{4}$/.test(v)) { toast('管理码必须是 4 位数字（或留空关闭）', 'err'); return; }
+  if (!/^\d{4}$/.test(v)) { toast('管理码必须是 4 位数字', 'err'); return; }
+  if (v === '1234') { toast('不能使用默认管理码 1234', 'err'); return; }
   fetch('/api/pin', { method: 'POST', headers: headers(), body: JSON.stringify({ pin: v }) })
     .then(function (r) { return r.json(); })
     .then(function (j) {
       if (j.ok) {
-        if (v) { pin = v; sessionStorage.setItem('tvlock_pin', v); }
-        else { pin = ''; sessionStorage.removeItem('tvlock_pin'); }
+        pin = v; sessionStorage.setItem('tvlock_pin', v);
         document.getElementById('setPinInput').value = '';
-        toast(v ? '面板管理码已开启' : '面板管理码已关闭', 'ok');
+        toast('管理码已保存', 'ok');
         refresh();
       } else if (j.needPin) {
         pin = ''; sessionStorage.removeItem('tvlock_pin');

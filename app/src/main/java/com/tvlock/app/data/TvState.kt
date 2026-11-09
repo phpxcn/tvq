@@ -22,8 +22,8 @@ data class TvState(
     val recentIds: List<String> = emptyList(), // 最近做过的题（去重，最多50）
     val pendingExtra: Int = 0,            // 答错遗留的附加题数（答对当前题后需连答）
     val answeredIds: List<String> = emptyList(), // 已答对过的题（永不再出，答完全部后轮回）
-    val adminPin: String = DEFAULT_ADMIN_PIN, // 电视端管理码（家长兜底：锁屏↑↑↓↓←→←→后输入；首次启动强制修改，禁止保留默认值）
-    val panelPin: String = "",            // 手机面板管理码（空 = 关闭）
+    val adminPin: String = DEFAULT_ADMIN_PIN, // 统一管理码（电视端应急解锁 + 手机面板鉴权共用；在手机面板「安全」卡片设置，禁止保留默认值）
+    val panelPin: String = "",            // 已废弃：管理码统一为 adminPin，保留仅为兼容旧 state.json 反序列化
     val firstRunDone: Boolean = false     // 首次启动引导（开机自启指引+管理码设置）是否完成
 ) {
     fun toMap(): LinkedHashMap<String, Any?> {
@@ -52,7 +52,7 @@ data class TvState(
     }
 
     companion object {
-        /** 默认管理码：仅作为初始占位，首次启动引导必须修改，禁止保留 */
+        /** 默认管理码：仅作为初始占位，必须在手机面板改为非默认值，才会激活应急解锁与面板鉴权 */
         const val DEFAULT_ADMIN_PIN = "1234"
 
         fun fromMap(m: Map<String, Any?>): TvState {

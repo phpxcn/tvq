@@ -435,6 +435,8 @@ object AppCore {
         return r
     }
 
+    /** 已废弃：管理码已统一为 adminPin（电视端 + 手机面板共用），保留仅为兼容旧调用 */
+    @Deprecated("统一使用 setAdminPin", ReplaceWith("setAdminPin(pin)"))
     fun setPanelPin(pin: String): Boolean {
         if (pin.isNotEmpty() && (pin.length != 4 || pin.any { it !in '0'..'9' })) return false
         synchronized(coreLock) {
@@ -461,9 +463,13 @@ object AppCore {
         notifyState()
     }
 
-    /** 设置电视端管理码（4 位数字，空串拒绝） */
+    /**
+     * 设置统一管理码（电视端锁屏兜底 + 设置页访问门 + 手机面板鉴权共用同一个码）。
+     * 约束：4 位数字，且禁止保留默认值 1234（两端规则统一收敛在此）。
+     */
     fun setAdminPin(pin: String): Boolean {
         if (pin.length != 4 || pin.any { it !in '0'..'9' }) return false
+        if (pin == com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN) return false
         synchronized(coreLock) {
             states.mutate { it.copy(adminPin = pin) }
         }

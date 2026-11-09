@@ -181,6 +181,7 @@
         android:visibility="gone">
 
         <TextView
+            android:id="@+id/tvPinTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="设置电视端管理码"
@@ -207,6 +208,7 @@
             android:columnCount="3" />
 
         <TextView
+            android:id="@+id/tvPinHint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"

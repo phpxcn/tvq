@@ -12,6 +12,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.GridLayout
 import android.widget.TextView
+import android.widget.Toast
 import android.app.Activity
 import com.tvlock.app.data.TvState
 
@@ -25,7 +26,7 @@ import com.tvlock.app.data.TvState
  * 防逃：
  *  - 沉浸全屏 + 屏幕固定 startLockTask（HOME 键失效）
  *  - 即使固定被取消，AppCore 看门狗 500ms 内拉回本页
- * 家长兜底：上上下下左右左右 -> 输入 4 位管理码 -> 解锁
+ * 家长兜底：上上下下左右左右 -> 输入管理码 -> 解锁（管理码统一在手机面板设置；未设置时此入口不可用）
  */
 class LockActivity : Activity() {
 
@@ -206,6 +207,12 @@ class LockActivity : Activity() {
     // ---------- 管理码（家长兜底） ----------
 
     private fun enterPinMode() {
+        // 管理码未设置（仍为默认 1234）时不提供应急解锁，防止孩子用默认码逃脱；
+        // 统一在手机面板设置后此入口才可用
+        if (AppCore.state.adminPin == com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN) {
+            Toast.makeText(this, "请先在手机面板设置管理码", Toast.LENGTH_LONG).show()
+            return
+        }
         pinMode = true
         pinBuf = ""
         tvPinDots.text = "____"
