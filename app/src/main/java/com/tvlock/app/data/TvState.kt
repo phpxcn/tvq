@@ -22,7 +22,7 @@ data class TvState(
     val recentIds: List<String> = emptyList(), // 最近做过的题（去重，最多50）
     val pendingExtra: Int = 0,            // 答错遗留的附加题数（答对当前题后需连答）
     val answeredIds: List<String> = emptyList(), // 已答对过的题（永不再出，答完全部后轮回）
-    val adminPin: String = "1234",        // 电视端管理码（家长兜底：锁屏↑↑↓↓←→←→后输入）
+    val adminPin: String = DEFAULT_ADMIN_PIN, // 电视端管理码（家长兜底：锁屏↑↑↓↓←→←→后输入；首次启动强制修改，禁止保留默认值）
     val panelPin: String = "",            // 手机面板管理码（空 = 关闭）
     val firstRunDone: Boolean = false     // 首次启动引导（开机自启指引+管理码设置）是否完成
 ) {
@@ -52,6 +52,9 @@ data class TvState(
     }
 
     companion object {
+        /** 默认管理码：仅作为初始占位，首次启动引导必须修改，禁止保留 */
+        const val DEFAULT_ADMIN_PIN = "1234"
+
         fun fromMap(m: Map<String, Any?>): TvState {
             val cur = (m["current"] as? Map<*, *>)?.let {
                 val cm = linkedMapOf<String, Any?>()
@@ -71,7 +74,7 @@ data class TvState(
                 recentIds = (m["recentIds"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
                 pendingExtra = (m["pendingExtra"] as? Long)?.toInt() ?: 0,
                 answeredIds = (m["answeredIds"] as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
-                adminPin = (m["adminPin"] as? String) ?: "1234",
+                adminPin = (m["adminPin"] as? String) ?: DEFAULT_ADMIN_PIN,
                 panelPin = (m["panelPin"] as? String) ?: "",
                 firstRunDone = m["firstRunDone"] as? Boolean ?: false
             )

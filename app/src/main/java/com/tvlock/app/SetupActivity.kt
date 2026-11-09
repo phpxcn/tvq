@@ -91,9 +91,13 @@ class SetupActivity : Activity() {
         renderState(AppCore.state)
         AppCore.addListener(stateListener)
 
-        // 首次启动引导：开机自启指引 + 管理码设置
-        if (!AppCore.state.firstRunDone) {
-            ui.post { showFirstRunGuide() }
+        // 首次启动引导：开机自启指引 + 强制设置管理码；
+        // 已完成引导但管理码仍是默认值（旧版升级 / 曾跳过）的用户，也强制补设一次，
+        // 杜绝默认 1234 被孩子当作万能解锁码
+        val st0 = AppCore.state
+        when {
+            !st0.firstRunDone -> ui.post { showFirstRunGuide() }
+            st0.adminPin == com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN -> ui.post { showPinStep() }
         }
     }
 
@@ -193,12 +197,31 @@ class SetupActivity : Activity() {
         Toast.makeText(this, "未能自动打开设置，请手动进入：设置 → 应用管理 → 电视答题锁", Toast.LENGTH_LONG).show()
     }
 
-    private fun finishPinGuide(keepDefault: Boolean) {
+    private fun finishPinGuide() {
         if (pinOverlay.visibility != View.VISIBLE) return
         pinOverlay.visibility = View.GONE
         AppCore.setFirstRunDone()
-        AppCore.log("首次引导完成${if (keepDefault) "（保留默认管理码）" else "（新管理码已设置）"}")
+        AppCore.log("首次引导完成（管理码已设置）")
         renderState(AppCore.state)
+    }
+
+    /**
+     * 校验并提交管理码：必须 4 位数字，且不能是默认值 1234。
+     * 不合法时提示并重输，浮层不关闭（强制完成）。
+     */
+    private fun tryCommitPin(): Boolean {
+        if (pinBuf.length != 4) {
+            Toast.makeText(this, "请输入 4 位数字", Toast.LENGTH_SHORT).show()
+            return false
+        }
+        if (pinBuf == com.tvlock.app.data.TvState.DEFAULT_ADMIN_PIN) {
+            Toast.makeText(this, "不能使用默认管理码，请重新设置", Toast.LENGTH_SHORT).show()
+            pinBuf = ""
+            tvPinShow.text = "____"
+            return false
+        }
+        AppCore.setAdminPin(pinBuf)
+        return true
     }
 
     private fun handlePinKey(keyCode: Int): Boolean {
@@ -228,8 +251,9 @@ class SetupActivity : Activity() {
             pinBuf += d
             tvPinShow.text = pinBuf.padEnd(4, '_')
             if (pinBuf.length == 4) {
-                AppCore.setAdminPin(pinBuf)
-                ui.postDelayed({ finishPinGuide(keepDefault = false) }, 1200)
+                if (tryCommitPin()) {
+                    ui.postDelayed({ finishPinGuide() }, 1200)
+                }
             }
         }
     }
@@ -257,9 +281,6 @@ class SetupActivity : Activity() {
                 }
             )
         }
-        findViewById<Button>(R.id.btnKeepDefault).setOnClickListener {
-            finishPinGuide(keepDefault = true)
-        }
     }
 
     private fun onPadKey(label: String) {
@@ -271,12 +292,7 @@ class SetupActivity : Activity() {
                 }
             }
             "确定" -> {
-                if (pinBuf.length == 4) {
-                    AppCore.setAdminPin(pinBuf)
-                    finishPinGuide(keepDefault = false)
-                } else {
-                    Toast.makeText(this, "请输入 4 位数字", Toast.LENGTH_SHORT).show()
-                }
+                if (tryCommitPin()) finishPinGuide()
             }
             else -> appendPinDigit(label)
         }

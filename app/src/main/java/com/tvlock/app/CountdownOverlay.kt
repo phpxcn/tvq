@@ -20,7 +20,8 @@ import android.widget.TextView
  *
  * 完全不挡操作：FLAG_NOT_FOCUSABLE + FLAG_NOT_TOUCHABLE（触摸/遥控
  * 穿透），窗口不进焦点链，任何页面的正常操作不受影响。
- * armed（布防待机）时常驻显示，锁定中（锁屏全屏）/暂停定时时隐藏。
+ * app 运行期间（非锁定）常驻：布防显示距下次锁机剩余、暂停定时显示「已暂停」；
+ * 锁定中（锁屏全屏答题）隐藏，避免遮挡。进程可见性保活价值贯穿始终。
  * 倒计时结束拉起答题页、答完题重新计时由 Scheduler/tick 既有逻辑负责。
  */
 object CountdownOverlay {
@@ -29,10 +30,19 @@ object CountdownOverlay {
     private var lastText: String = ""
     private var lastWarn: Boolean? = null
 
-    /** 更新（armed 时每 tick 调用）：剩余毫秒 → 首次创建窗口 / 文本变化时刷新（只显示 m:ss） */
+    /** 更新倒计时文本（布防待机时每 tick 调用，显示距下次锁机的剩余时间 m:ss） */
     fun update(context: Context, remainingMs: Long) {
         val text = format(remainingMs.coerceAtLeast(0L))
         val warn = remainingMs in 1..60_000L
+        show(context, text, warn)
+    }
+
+    /** 暂停定时：框仍常驻显示「已暂停」，保持进程可见性与状态指示 */
+    fun showPaused(context: Context) {
+        show(context, "已暂停", warn = false)
+    }
+
+    private fun show(context: Context, text: String, warn: Boolean) {
         if (view == null) {
             create(context, text, warn)
             return

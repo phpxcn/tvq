@@ -219,16 +219,16 @@ object AppCore {
             }
         }
 
-        // 倒计时悬浮窗：布防待机时右上角常驻（进程可见性 + 心理预期，
-        // 完全穿透不影响任何页面操作）；锁定中（锁屏全屏）/暂停定时时隐藏。
-        // 答完题 unlock 后 armed 重置，倒计时自动重新显示计时。
+        // 倒计时悬浮窗：app 运行期间（非锁定）右上角常驻——进程可见性保活 + 状态指示，
+        // 完全穿透不影响任何页面操作；布防显示距下次锁机剩余，暂停定时显示「已暂停」。
+        // 锁定中（锁屏全屏答题）隐藏，避免遮挡。
         // 此处重读 state：本 tick 若刚锁机，开头旧引用 locked 仍为 false，
         // 用旧值会闪现一次悬浮窗再等下个 tick 收掉
         val stLive = state
-        if (stLive.armed && !stLive.locked) {
-            CountdownOverlay.update(appContext, Scheduler.remainingMs(stLive, now) ?: 0L)
-        } else {
-            CountdownOverlay.hide()
+        when {
+            stLive.locked -> CountdownOverlay.hide()
+            stLive.armed -> CountdownOverlay.update(appContext, Scheduler.remainingMs(stLive, now) ?: 0L)
+            else -> CountdownOverlay.showPaused(appContext)
         }
         // 看门狗：锁定中但锁屏不在前台 -> 拉回（HOME 键逃逸兜底）
         // 指数退避：拉不回时间隔翻倍至 30s——频繁 startActivity 会触发系统
@@ -260,16 +260,32 @@ object AppCore {
         }
     }
 
-    /** 定时到点触发的锁机（排除已答对过的题与最近做过的题） */
-    private fun lockNowInternal() {
-        val st0 = state
-        val recent = st0.recentIds
-        val q: Question = try {
-            bankMgr.pickQuestion(st0.answeredIds + recent)
+    /**
+     * 唯一抽题入口（调用方须持 coreLock）。
+     *  - 当前题库全部答对过 → 轮回：清空 answeredIds 从头开始；
+     *    同时把 answeredIds 的规模收敛在「当前库题数」以内，避免随使用无限增长。
+     *  - 排除已答 + 最近 50 题，避免立刻重复。
+     *  recentIds 不清空（本身有 takeLast(50) 上限）：轮回后仍避开刚做过的题。
+     */
+    private fun pickNextQuestion(extraExclude: Collection<String> = emptyList()): Question {
+        val st = state
+        if (bank.total() > 0 && bank.remainingCount(st.answeredIds) == 0) {
+            states.mutate { it.copy(answeredIds = emptyList()) }
+            log("题库已全部答完，轮回清空已答记录")
+        }
+        val cur = state
+        val exclude = cur.answeredIds + cur.recentIds + extraExclude
+        return try {
+            bankMgr.pickQuestion(exclude)
         } catch (t: Throwable) {
             log("抽题失败：$t")
             Question.FALLBACK
         }
+    }
+
+    /** 定时到点触发的锁机 */
+    private fun lockNowInternal() {
+        val q = pickNextQuestion()
         val now = System.currentTimeMillis()
         states.mutate {
             it.copy(
@@ -372,15 +388,13 @@ object AppCore {
                 }
                 return SubmitResult.WRONG
             }
-            // 答对：记入已答集（永不再出）；答错债未清则出新题连答
-            val answered = (st.answeredIds + q.id).distinct()
+            // 答对：先把当前题记入已答集（永不再出）并持久化，再判断轮回/连答；
+            // 先落盘 answeredIds，pickNextQuestion 的轮回判定才能基于最新已答集准确触发
+            states.mutate {
+                it.copy(answeredIds = (it.answeredIds + q.id).distinct(), lastSeenAt = now)
+            }
             if (st.pendingExtra > 0) {
-                val next: Question = try {
-                    bankMgr.pickQuestion(answered + st.recentIds)
-                } catch (t: Throwable) {
-                    log("抽题失败：$t")
-                    Question.FALLBACK
-                }
+                val next = pickNextQuestion()
                 states.mutate {
                     it.copy(
                         locked = true,
@@ -388,9 +402,7 @@ object AppCore {
                         wrongAttempts = 0,
                         typed = "",
                         pendingExtra = it.pendingExtra - 1,
-                        answeredIds = answered,
-                        recentIds = (it.recentIds + next.id).takeLast(50),
-                        lastSeenAt = now
+                        recentIds = (it.recentIds + next.id).takeLast(50)
                     )
                 }
                 notifyState()
@@ -401,9 +413,7 @@ object AppCore {
                     locked = false,
                     wrongAttempts = 0,
                     typed = "",
-                    answeredIds = answered,
-                    nextLockAt = if (it.armed) now + it.intervalMin * 60_000 else it.nextLockAt,
-                    lastSeenAt = now
+                    nextLockAt = if (it.armed) now + it.intervalMin * 60_000 else it.nextLockAt
                 )
             }
             notifyState()
@@ -413,7 +423,16 @@ object AppCore {
 
     /** 题库热更新（手机上传） */
     fun importBankText(text: String): BankManager.ImportResult {
-        return bankMgr.importText(text)
+        val r = bankMgr.importText(text)
+        if (r.ok) {
+            // 换库后旧题库的 id 已失效，清空已答记录：
+            // 避免 answeredIds 随频繁换库累积旧 id 而无限增长，同时新库全部置为未答
+            synchronized(coreLock) {
+                states.mutate { it.copy(answeredIds = emptyList()) }
+            }
+            notifyState()
+        }
+        return r
     }
 
     fun setPanelPin(pin: String): Boolean {

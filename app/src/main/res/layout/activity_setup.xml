@@ -206,23 +206,12 @@
             android:layout_marginTop="24dp"
             android:columnCount="3" />
 
-        <Button
-            android:id="@+id/btnKeepDefault"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:background="@drawable/bg_btn"
-            android:padding="14dp"
-            android:text="跳过，保留默认管理码 1234"
-            android:textColor="@color/textMain"
-            android:textSize="18sp" />
-
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:gravity="center"
-            android:text="用遥控器数字键输入 4 位新管理码\n（家长解锁电视时使用，请牢记）"
+            android:text="请设置 4 位新管理码（不能用默认的 1234）\n家长解锁电视时使用，请牢记"
             android:textColor="@color/textSub"
             android:textSize="22sp" />
 
